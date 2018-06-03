@@ -5,7 +5,7 @@ export
   LogLevel
 
 type
-  FileOutput*[outputId: static[int]] = object
+  FileOutput*[outputId: static[int], truncate: static[bool]] = object
   StdOutOutput* = object
   StdErrOutput* = object
   SysLogOutput* = object
@@ -16,17 +16,17 @@ type
   AnyOutput = FileOutput|StdOutOutput|StdErrOutput|
               SysLogOutput|BufferedOutput
 
-  TextLineRecord[Output;
-                 timestamps: static[TimestampsScheme],
-                 colors: static[ColorScheme]] = object
-    output: Output
-
-  TextBlockRecord[Output;
+  TextLineRecord*[Output;
                   timestamps: static[TimestampsScheme],
                   colors: static[ColorScheme]] = object
     output: Output
 
-  JsonRecord[Output; timestamps: static[TimestampsScheme]] = object
+  TextBlockRecord*[Output;
+                   timestamps: static[TimestampsScheme],
+                   colors: static[ColorScheme]] = object
+    output: Output
+
+  JsonRecord*[Output; timestamps: static[TimestampsScheme]] = object
     output: Output
 
 # XXX: `bindSym` is currently broken and doesn't return proper type symbols
@@ -41,7 +41,9 @@ proc selectOutputType(dst: LogDestination): NimNode =
   of toStdOut: bnd"StdOutOutput"
   of toStdErr: bnd"StdErrOutput"
   of toSysLog: bnd"SysLogOutput"
-  of toFile:   newTree(nnkBracketExpr, bnd"FileOutput", newLit(dst.outputId))
+  of toFile:   newTree(nnkBracketExpr, bnd"FileOutput",
+                                       newLit(dst.outputId),
+                                       newLit(dst.truncate))
 
 proc selectRecordType(sink: SinkSpec): NimNode =
   # This proc translates the SinkSpecs loaded in the `options` module
@@ -390,7 +392,7 @@ macro createStreamRecordTypes: untyped =
 
     if i == 0:
       result.add quote do:
-        template chroniclesActiveStreamIMPL*: typedesc = `streamName`
+        template activeChroniclesStream*: typedesc = `streamName`
 
 createStreamRecordTypes()
 
@@ -429,7 +431,9 @@ for stream in config.streams:
           filename.add ".log"
 
         createDir(filename.splitFile.dir)
-        fileOutputs[dst.outputId] = open(filename, fmWrite)
+
+        let openFlags = if dst.truncate: fmWrite else: fmAppend
+        fileOutputs[dst.outputId] = open(filename, openFlags)
 
 addQuitProc proc() {.noconv.} =
   for f in fileOutputs:

@@ -9,9 +9,9 @@ proc appenderIMPL[LogRecord, PropertyType](log: var LogRecord,
   log.setProperty v.name, v.value
 
 proc logAllDynamicProperties*[LogRecord](log: var LogRecord) =
+  # This proc is intended for internal use only
   mixin tlsSlot
 
-  # This proc is intended for internal use only
   var frame = tlsSlot(LogRecord)
   while frame != nil:
     for i in 0 ..< frame.bindingsCount:
@@ -36,11 +36,6 @@ macro dynamicLogScopeIMPL*(recordType: typedesc,
 
   if body.kind != nnkStmtList:
     error "dynamicLogScope expects a block", body
-
-  var stream = config.streams[0]
-  for k, v in assignments(lexicalScopes.finalLexicalBindings):
-    if k == "stream":
-      stream = handleUserStreamChoice(v)
 
   var
     makeScopeBinding = bindSym"makeScopeBinding"
@@ -78,6 +73,9 @@ macro dynamicLogScopeIMPL*(recordType: typedesc,
 
       # The address of the new BindingFrame is written to a TLS location.
       tlsSlot(`recordType`) = unsafeAddr(bindingFrame)
+
+      # XXX: In resumable functions, we need help from the compiler to let us
+      # intercept yields and resumes so we can restore our context.
 
       `body`
 

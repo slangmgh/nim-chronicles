@@ -16,7 +16,7 @@ const
   chronicles_required_topics {.strdefine.} = ""
   chronicles_disabled_topics {.strdefine.} = ""
   chronicles_runtime_filtering {.strdefine.} = "off"
-  chronicles_log_level {.strdefine.} = when defined(debug): "ALL"
+  chronicles_log_level {.strdefine.} = when defined(debug): "DEBUG"
                                        else: "INFO"
 
   chronicles_timestamps {.strdefine.} = "RfcTime"
@@ -26,8 +26,6 @@ const
 
   truthySwitches = ["yes", "1", "on", "true"]
   falsySwitches = ["no", "0", "off", "false", "none"]
-    # You can use any of these values when specifying on/off options.
-    # They are case-insensitive.
 
 when chronicles_streams.len > 0 and chronicles_sinks.len > 0:
   {.error: "Please specify only one of the options 'chronicles_streams' and 'chronicles_sinks'." }
@@ -53,11 +51,16 @@ type
     toFile,
     toSysLog
 
+  LogFileMode = enum
+    Append,
+    Truncate
+
   LogDestination* = object
     case kind*: LogDestinationKind
     of toFile:
       outputId*: int
       filename*: string
+      truncate*: bool
     else:
       discard
 
@@ -156,6 +159,7 @@ proc logDestinationFromNode(n: NimNode): LogDestination =
     of "file":
       result.kind = toFile
       result.filename = ""
+      result.truncate = false
     else:
       error &"'{destination}' is not a recognized log destination. " &
              "Allowed values are StdOut, StdErr, SysLog and File."
@@ -165,7 +169,9 @@ proc logDestinationFromNode(n: NimNode): LogDestination =
              "Only 'file' destinations accept parameters."
     result.kind = toFile
     result.filename = n[1].repr.replace(" ", "")
-    if DirSep != '/': result.filename = replace("/", $DirSep)
+    if DirSep != '/': result.filename = result.filename.replace("/", $DirSep)
+    if n.len > 2:
+      result.truncate = handleEnumOption(LogFileMode, "file mode", $n[2]) == Truncate
   else:
     error &"Invalid log destination expression '{n.repr}'. " &
            "Please refer to the documentation for the supported options."
@@ -266,7 +272,7 @@ proc parseStreamsSpec(spec: string): Configuration {.compileTime.} =
           if sink.colorScheme != NoColors:
             error "Using a color scheme is not supported when logging to syslog."
           when not defined(posix):
-            warn "Logging to syslog is available only on POSIX systems."
+            warning "Logging to syslog is available only on POSIX systems."
         else: discard
 
 proc parseSinksSpec(spec: string): Configuration {.compileTime.} =

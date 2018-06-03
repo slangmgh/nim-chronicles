@@ -5,6 +5,10 @@ type
   BindingsSet* = Table[string, NimNode]
   FinalBindingsSet* = OrderedTable[string, NimNode]
 
+proc id*(key: string, public = false): NimNode =
+  result = newIdentNode(key)
+  if public: result = postfix(result, "*")
+
 iterator assignments*(n: NimNode, liftIdentifiers = true): (string, NimNode) =
   # extract the assignment pairs from a block with assigments
   # or a call-site with keyword arguments.
@@ -13,8 +17,10 @@ iterator assignments*(n: NimNode, liftIdentifiers = true): (string, NimNode) =
       let name = $child[0]
       let value = child[1]
       yield (name, value)
+
     elif child.kind == nnkIdent and liftIdentifiers:
       yield ($child, child)
+
     else:
       error "A scope definitions should consist only of key-value assignments"
 
@@ -25,12 +31,12 @@ proc scopeAssignments*(scopeBody: NimNode): NimNode =
     result = newStmtList()
 
 proc scopeRevision*(scopeBody: NimNode): int =
-  # get the revision number from a `chroniclesLexScopeIMPL` body
+  # get the revision number from a `activeChroniclesScope` body
   var revisionNode = scopeBody[0]
   result = int(revisionNode.intVal)
 
 proc lastScopeBody*(scopes: NimNode): NimNode =
-  # get the most recent `chroniclesLexScopeIMPL` body from a symChoice node
+  # get the most recent `activeChroniclesScope` body from a symChoice node
   if scopes.kind in {nnkClosedSymChoice, nnkOpenSymChoice}:
     var bestScopeRev = 0
     assert scopes.len > 0
@@ -63,4 +69,10 @@ proc skipTypedesc*(n: NimNode): NimNode =
   result = n
   if result.kind == nnkBracketExpr and $result[0] in ["type", "typedesc"]:
     result = result[1]
+
+proc clearEmptyVarargs*(args: NimNode) =
+  # Nim will sometimes do something silly - it will convert our varargs
+  # into an empty array. We need to detect this case and handle it:
+  if args.len == 1 and args[0].kind == nnkHiddenStdConv:
+    args.del 0
 
